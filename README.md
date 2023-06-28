@@ -1,5 +1,3 @@
 # stabqu
 Приветствую
-gjr
-faslh
 
