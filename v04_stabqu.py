@@ -1,6 +1,5 @@
 """
 - Добавить фичу статическая маска (чтобы траектории не исчезали)
-- Сокращение области поиска точек можно реализовать через маску goodfeaturestotrack
 """
 
 import cv2 as cv
@@ -17,11 +16,13 @@ from collections import deque
 
 BIAS_LINE_COLOR = (255, 0, 0)
 
+bg_color = '#EEEEEE'
 
 class VideoStreamApp:
     def __init__(self, window, video_source=0):
         self.window = window
         self.window.title("Video Stream")
+        self.window.config(bg=bg_color)
 
         # создание объекта видеозахвата
         self.video_source = video_source
@@ -29,40 +30,51 @@ class VideoStreamApp:
 
         # первый блок - управление
         self.button_frame = tk.Frame(window)
-        self.button_frame.pack(side=tk.LEFT, fill='both')
+        self.button_frame.config(bg=bg_color)
+        self.button_frame.grid(row=0, column=0, padx=(4, 0))
 
-        self.btn_start = tk.Button(self.button_frame, text="Start", command=self.start_video_stream)
-        self.btn_start.pack(side=tk.TOP)
+        self.btn_start = tk.Button(self.button_frame, text="Start", command=self.start_video_stream, relief=tk.FLAT)
+        self.btn_start.config(bg=bg_color)
+        self.btn_start.grid(row=0, column=0, pady=(0, 4))
 
-        self.btn_stop = tk.Button(self.button_frame, text="Stop", command=self.stop_video_stream)
-        self.btn_stop.pack(side=tk.TOP)
+        self.btn_stop = tk.Button(self.button_frame, text="Stop", command=self.stop_video_stream, relief=tk.FLAT)
+        self.btn_stop.config(bg=bg_color)
+        self.btn_stop.grid(row=1, column=0, padx=10)
+
+        self.btn_fix = tk.Button(self.button_frame, text="Fix frame", relief=tk.FLAT)
+        self.btn_fix.config(bg=bg_color)
+        self.btn_fix.grid(row=2, column=0, pady=(4, 70))
 
         # -1 ограничитель пустого фрейма
-        self.tscale = tk.Scale(self.button_frame, from_=0, to=self.video.height/2-40, orient=tk.VERTICAL)
-        self.tscale.pack(side=tk.TOP)
+        self.tscale = tk.Scale(self.button_frame, from_=0, to=self.video.height/2-40, orient=tk.VERTICAL, relief=tk.FLAT)
+        self.tscale.config(bg=bg_color)
+        self.tscale.grid(row=3, column=1, padx=4)
 
-        self.lscale = tk.Scale(self.button_frame, from_=0, to=self.video.width/2-40, orient=tk.HORIZONTAL)
-        self.lscale.pack(side=tk.LEFT)
+        self.lscale = tk.Scale(self.button_frame, from_=0, to=self.video.width/2-40, orient=tk.HORIZONTAL, relief=tk.FLAT)
+        self.lscale.config(bg=bg_color)
+        self.lscale.grid(row=4, column=0)
 
         position = tk.IntVar()
         position.set(1080)
-        self.rscale = tk.Scale(self.button_frame, from_=self.video.width/2+40, to=self.video.width, orient=tk.HORIZONTAL, variable=position)
-        self.rscale.pack(side=tk.RIGHT)
+        self.rscale = tk.Scale(self.button_frame, from_=self.video.width/2+40, to=self.video.width, orient=tk.HORIZONTAL, variable=position, relief=tk.FLAT)
+        self.rscale.config(bg=bg_color)
+        self.rscale.grid(row=4, column=2, padx=15)
 
         position = tk.IntVar()
         position.set(1920)
-        self.bscale = tk.Scale(self.button_frame, from_=self.video.height/2+40, to=self.video.height, orient=tk.VERTICAL, variable=position)
-        self.bscale.pack(side=tk.BOTTOM)
+        self.bscale = tk.Scale(self.button_frame, from_=self.video.height/2+40, to=self.video.height, orient=tk.VERTICAL, variable=position, relief=tk.FLAT)
+        self.bscale.config(bg=bg_color)
+        self.bscale.grid(row=5, column=1, padx=4, pady=10)
 
         # блок вывода видео
         self.canvas = tk.Canvas(window, width=self.video.width, height=self.video.height)
-        self.canvas.pack(side=tk.LEFT)
+        self.canvas.grid(row=0, column=1, padx=10, pady=10)
 
         # блок отрисовки графиков
-        self.plot = Plot()
+        self.plot = Plot(figsize=(10, 5))
         self.canvas_graph = FigureCanvasTkAgg(self.plot.figure, master=window)
         self.canvas_graph.draw()
-        self.canvas_graph.get_tk_widget().pack(side=tk.LEFT)
+        self.canvas_graph.get_tk_widget().grid(row=3, column=0, columnspan=2, pady=10)
 
         self.window.mainloop()
 
@@ -84,9 +96,9 @@ class VideoStreamApp:
         lbias = self.lscale.get()
         tbias = self.tscale.get()
         bbias = self.bscale.get()
-        ret, frame, prev_data, shift = self.video.get_frame(prev_data, bias=(rbias, lbias, tbias, bbias))
+        ret, frame, prev_data, shift, rotation_angle = self.video.get_frame(prev_data, bias=(rbias, lbias, tbias, bbias))
 
-        self.plot.renovate(x1_shift=shift[0][0], x2_shift=shift[0][1])
+        self.plot.renovate(x1_shift=shift[0][0], x2_shift=shift[0][1], x3_shift=rotation_angle)
         self.canvas_graph.draw()
 
         if ret:
@@ -133,12 +145,12 @@ class VideoCapture:
             result = np.multiply(result, feature_mask)
             result = cv.convertScaleAbs(result)
 
-            shift = np.mean((next_points - prev_points), axis=0)
+            shift = np.mean((next_points - prev_points), axis=1)
 
             frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
             result = cv.cvtColor(result, cv.COLOR_BGR2RGB)
             prev_data = (frame, next_points)
-            return ret, result, prev_data, shift
+            return ret, result, prev_data, shift, np.mean(shift)
 
     # def resize(self, frame, prev_gray, bias):
     #
@@ -150,8 +162,8 @@ class VideoCapture:
 
 
 class Plot:
-    def __init__(self):
-        self.figure, axes = plt.subplots(3, figsize=(10, 6))
+    def __init__(self, figsize=(10, 6)):
+        self.figure, axes = plt.subplots(3, figsize=figsize)
 
         self.x1 = deque(np.zeros(40), maxlen=40)
         self.x2 = deque(np.zeros(40), maxlen=40)
@@ -169,17 +181,20 @@ class Plot:
         self.x3text = axes[2].text(35, 50, f'СКО: {self.x3std}')
         self.x3line, = axes[2].plot(self.x3)
 
-    def renovate(self, x1_shift, x2_shift):
+    def renovate(self, x1_shift, x2_shift, x3_shift):
         self.x1.append(x1_shift)
         self.x2.append(x2_shift)
+        self.x3.append(x3_shift)
         self.x1std = np.round(np.std(self.x1), 3)
         self.x2std = np.round(np.std(self.x2), 3)
         self.x3std = np.round(np.std(self.x3), 3)
 
         self.x1text.set_text(f'СКО: {self.x1std}')
         self.x2text.set_text(f'СКО: {self.x2std}')
+        self.x3text.set_text(f'СКО: {self.x3std}')
         self.x1line.set_ydata(self.x1)
         self.x2line.set_ydata(self.x2)
+        self.x3line.set_ydata(self.x3)
 
 
 if __name__ == '__main__':
