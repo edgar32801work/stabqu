@@ -1,5 +1,8 @@
 """
-- Добавить фичу статическая маска (чтобы траектории не исчезали)
+v_04_02 --- 01.10.23: 
+    ::: + flag fix frame
+    ::: + rotation angle
+    ::: + style changes
 """
 
 import cv2 as cv
@@ -41,7 +44,8 @@ class VideoStreamApp:
         self.btn_stop.config(bg=bg_color)
         self.btn_stop.grid(row=1, column=0, padx=10)
 
-        self.btn_fix = tk.Button(self.button_frame, text="Fix frame", relief=tk.FLAT)
+        self.fix_frame = False
+        self.btn_fix = tk.Button(self.button_frame, text="Fix frame", relief=tk.FLAT, command=self.flag_fix_frame)
         self.btn_fix.config(bg=bg_color)
         self.btn_fix.grid(row=2, column=0, pady=(4, 70))
 
@@ -90,15 +94,18 @@ class VideoStreamApp:
         cv.destroyAllWindows()
         self.window.quit()
 
+    def flag_fix_frame(self):
+        self.fix_frame = not self.fix_frame
+
     def update(self, prev_data):
 
         rbias = self.rscale.get()
         lbias = self.lscale.get()
         tbias = self.tscale.get()
         bbias = self.bscale.get()
-        ret, frame, prev_data, shift, rotation_angle = self.video.get_frame(prev_data, bias=(rbias, lbias, tbias, bbias))
+        ret, frame, prev_data, shift, rotation_angle = self.video.get_frame(prev_data, bias=(rbias, lbias, tbias, bbias), flag_fix_frame=self.fix_frame)
 
-        self.plot.renovate(x1_shift=shift[0][0], x2_shift=shift[0][1], x3_shift=rotation_angle)
+        self.plot.renovate(x1_shift=shift[0], x2_shift=shift[1], x3_shift=rotation_angle)
         self.canvas_graph.draw()
 
         if ret:
@@ -117,8 +124,8 @@ class VideoCapture:
         self.height = int(self.capture.get(cv.CAP_PROP_FRAME_HEIGHT))
         self.bias_line_color = BIAS_LINE_COLOR
 
-    def get_frame(self, prev_data, bias):
-        prev_gray, prev_point = prev_data
+    def get_frame(self, prev_data, bias, flag_fix_frame):
+        prev_gray, _ = prev_data
         rbias, lbias, tbias, bbias = bias
         if self.capture.isOpened():
             ret, frame = self.capture.read()
@@ -145,18 +152,16 @@ class VideoCapture:
             result = np.multiply(result, feature_mask)
             result = cv.convertScaleAbs(result)
 
-            shift = np.mean((next_points - prev_points), axis=1)
+            shift = np.mean((next_points - prev_points), axis=0)[0]
+            rotation = np.arctan2(shift[0], shift[1]) * (((shift[0] * shift[1]) / (shift[0] + shift[1]))*2)
 
             frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
             result = cv.cvtColor(result, cv.COLOR_BGR2RGB)
-            prev_data = (frame, next_points)
-            return ret, result, prev_data, shift, np.mean(shift)
-
-    # def resize(self, frame, prev_gray, bias):
-    #
-    #
-    #     if frame.shape == frame[tbias: bbias, lbias: rbias].shape and prev_gray.shape == prev_gray[tbias: bbias, lbias: rbias].shape:
-    #         print(True)
+            if flag_fix_frame:
+                prev_data = (prev_gray, _)
+            else:
+                prev_data = (frame, next_points)
+            return ret, result, prev_data, shift, rotation
 
 
 
@@ -174,6 +179,7 @@ class Plot:
 
         for i in range(3):
             axes[i].set_ylim(-80, 80)
+        axes[2].set_ylim(-200, 200)
         self.x1text = axes[0].text(35, 50, f'СКО: {self.x1std}')
         self.x1line, = axes[0].plot(self.x1)
         self.x2text = axes[1].text(35, 50, f'СКО: {self.x2std}')
@@ -198,13 +204,8 @@ class Plot:
 
 
 if __name__ == '__main__':
-    # Создание окна Tkinter
     root = tk.Tk()
 
-    # Установка размера окна
     root.geometry("1000x1100")
 
-    # Создание приложения видеопотока
     app = VideoStreamApp(root)
-
-# input('- press "Enter" to close the window ...')
